@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Инвентаризация коммутаторов</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --navy:    #0F2942;
+  --navy-2:  #163552;
+  --blue:    #1D6FA4;
+  --blue-lt: #E8F4FD;
+  --slate:   #64748B;
+  --slate-lt:#94A3B8;
+  --bg:      #F8FAFC;
+  --white:   #FFFFFF;
+  --border:  #E2E8F0;
+  --ok:      #10B981;
+  --warn:    #F59E0B;
+  --err:     #EF4444;
+  --ok-bg:   #ECFDF5;
+  --warn-bg: #FFFBEB;
+  --err-bg:  #FEF2F2;
+  --text:    #0F172A;
+  --text-2:  #475569;
+  --mono:    'IBM Plex Mono', monospace;
+  --sans:    'IBM Plex Sans', sans-serif;
+}
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--navy);
+  color: #fff;
+  padding: 0 32px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 0 rgba(255,255,255,.06);
+}
+header svg { flex-shrink: 0; }
+.header-title {
+  font-weight: 600;
+  font-size: 15px;
+  letter-spacing: .02em;
+}
+.header-sub {
+  font-size: 12px;
+  color: #7ea8c9;
+  font-family: var(--mono);
+  margin-left: auto;
+}
+
+/* ── UPLOAD ── */
+#upload-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: calc(100vh - 56px);
+  padding: 40px 20px;
+}
+.upload-card {
+  background: var(--white);
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+  padding: 64px 80px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .2s, background .2s;
+  max-width: 520px;
+  width: 100%;
+}
+.upload-card:hover, .upload-card.drag { border-color: var(--blue); background: var(--blue-lt); }
+.upload-icon {
+  width: 64px; height: 64px;
+  background: var(--blue-lt);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 24px;
+  transition: background .2s;
+}
+.upload-card:hover .upload-icon { background: #c8e4f7; }
+.upload-icon svg { color: var(--blue); }
+.upload-card h2 { font-size: 18px; font-weight: 600; color: var(--navy); margin-bottom: 8px; }
+.upload-card p  { color: var(--slate); font-size: 13px; margin-bottom: 28px; }
+.upload-btn {
+  display: inline-block;
+  background: var(--blue);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 10px 28px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: background .15s;
+}
+.upload-btn:hover { background: #1a5f8e; }
+#file-input { display: none; }
+.upload-hint { margin-top: 16px; font-size: 12px; color: var(--slate-lt); }
+
+/* ── MAIN LAYOUT ── */
+#main-view { display: none; flex-direction: column; height: calc(100vh - 56px); overflow: hidden; }
+
+/* ── KPI STRIP ── */
+.kpi-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.kpi-card {
+  flex: 1 1 140px;
+  min-width: 140px;
+  background: var(--white);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.kpi-value {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--navy);
+  line-height: 1;
+}
+.kpi-value.warn { color: var(--warn); }
+.kpi-value.err  { color: var(--err);  }
+.kpi-label {
+  font-size: 12px;
+  color: var(--slate);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+/* ── CONTENT AREA ── */
+.content {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── SIDEBAR ── */
+.sidebar {
+  width: 228px;
+  flex-shrink: 0;
+  background: var(--white);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-search {
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.sidebar-search input {
+  width: 100%;
+  padding: 7px 10px 7px 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E") no-repeat 10px center;
+  outline: none;
+  transition: border-color .15s;
+}
+.sidebar-search input:focus { border-color: var(--blue); }
+.sidebar-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 4px 0;
+}
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 14px;
+  cursor: pointer;
+  transition: background .1s;
+  border-left: 3px solid transparent;
+  font-size: 13px;
+}
+.sidebar-item:hover { background: var(--bg); }
+.sidebar-item.active {
+  background: var(--blue-lt);
+  border-left-color: var(--blue);
+  color: var(--blue);
+  font-weight: 600;
+}
+.sidebar-item .obj-name { flex: 1; font-family: var(--mono); font-size: 12px; }
+.sidebar-item .obj-count {
+  font-size: 11px;
+  color: var(--slate-lt);
+  font-family: var(--mono);
+}
+.status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dot-ok   { background: var(--ok);   }
+.dot-warn { background: var(--warn); }
+.dot-err  { background: var(--err);  }
+
+/* ── TABLE PANEL ── */
+.table-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.table-toolbar {
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--white);
+  flex-shrink: 0;
+}
+.toolbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--navy);
+  font-family: var(--mono);
+  margin-right: auto;
+}
+.toolbar-search {
+  padding: 6px 10px 6px 30px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%2394A3B8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='M21 21l-4.35-4.35'/%3E%3C/svg%3E") no-repeat 9px center;
+  width: 200px;
+  outline: none;
+  transition: border-color .15s;
+}
+.toolbar-search:focus { border-color: var(--blue); }
+.filter-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: var(--sans);
+  font-size: 13px;
+  background: var(--white);
+  cursor: pointer;
+  transition: all .15s;
+  color: var(--text-2);
+}
+.filter-btn:hover { border-color: var(--blue); color: var(--blue); }
+.filter-btn.active { background: var(--err-bg); border-color: var(--err); color: var(--err); }
+
+.table-wrap {
+  overflow: auto;
+  flex: 1;
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+thead th {
+  background: var(--navy);
+  color: #CBD5E1;
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  padding: 10px 14px;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  text-align: left;
+  border-right: 1px solid rgba(255,255,255,.06);
+  cursor: pointer;
+  user-select: none;
+}
+thead th:hover { color: #fff; }
+thead th.sorted { color: #7CC8F2; }
+thead th.sorted::after { content: ' ↑'; }
+thead th.sorted.desc::after { content: ' ↓'; }
+
+tbody tr {
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid transparent;
+  transition: background .1s;
+}
+tbody tr:hover { background: var(--blue-lt) !important; }
+tbody tr:nth-child(even) { background: #FAFBFC; }
+tbody tr.row-warn { border-left-color: var(--warn); background: var(--warn-bg); }
+tbody tr.row-err  { border-left-color: var(--err);  background: var(--err-bg);  }
+tbody tr.row-warn:hover, tbody tr.row-err:hover { background: var(--blue-lt) !important; }
+
+td {
+  padding: 8px 14px;
+  vertical-align: top;
+  color: var(--text-2);
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+td.mono { font-family: var(--mono); font-size: 12px; color: var(--navy); }
+td.ip   { font-family: var(--mono); font-size: 12px; color: #1D6FA4; }
+td.switch-name { font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--navy); }
+td.missing { color: #CBD5E1; font-style: italic; font-size: 12px; }
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: normal;
+  line-height: 1.4;
+  max-width: 260px;
+}
+.badge-warn { background: #FEF3C7; color: #92400E; }
+.badge-err  { background: #FEE2E2; color: #991B1B; }
+
+/* ── SUMMARY TABLE ── */
+#summary-table th:first-child { width: 80px; }
+.obj-completeness {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bar-track {
+  flex: 1;
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  transition: width .4s ease;
+}
+
+/* ── STATUS COUNTS in summary ── */
+.count-ok   { color: var(--ok);  font-family: var(--mono); font-weight: 500; }
+.count-warn { color: var(--warn); font-family: var(--mono); font-weight: 500; }
+.count-err  { color: var(--err);  font-family: var(--mono); font-weight: 500; }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+/* ── STAT BADGE in toolbar ── */
+.row-count {
+  font-size: 12px;
+  color: var(--slate);
+  font-family: var(--mono);
+  flex-shrink: 0;
+}
+
+/* ── TOOLTIP ── */
+td[title] { cursor: default; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 900px) {
+  .sidebar { width: 180px; }
+  .kpi-value { font-size: 22px; }
+  .kpi-card { padding: 14px 16px; }
+}
+
+/* Loading */
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+  margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-msg { color: var(--slate); font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#7CC8F2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/>
+    <line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/>
+    <line x1="10" y1="6" x2="14" y2="6"/><line x1="10" y1="18" x2="14" y2="18"/>
+  </svg>
+  <span class="header-title">Инвентаризация коммутаторов</span>
+  <span class="header-sub" id="header-file">— загрузите файл —</span>
+</header>
+
+<!-- UPLOAD VIEW -->
+<div id="upload-view">
+  <div class="upload-card" id="drop-zone">
+    <div class="upload-icon">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+        <line x1="12" y1="18" x2="12" y2="12"/><polyline points="9 15 12 12 15 15"/>
+      </svg>
+    </div>
+    <h2>Загрузите Excel-файл</h2>
+    <p>Перетащите файл сюда или нажмите кнопку ниже.<br/>Поддерживается формат .xlsx</p>
+    <button class="upload-btn" onclick="document.getElementById('file-input').click()">Выбрать файл</button>
+    <input type="file" id="file-input" accept=".xlsx,.xls"/>
+    <p class="upload-hint">Данные обрабатываются локально — файл никуда не отправляется</p>
+  </div>
+</div>
+
+<!-- MAIN VIEW -->
+<div id="main-view">
+  <!-- KPI Strip -->
+  <div class="kpi-strip" id="kpi-strip"></div>
+
+  <div class="content">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-search">
+        <input type="text" id="sidebar-search" placeholder="Поиск объекта…" oninput="filterSidebar(this.value)"/>
+      </div>
+      <div class="sidebar-list" id="sidebar-list"></div>
+    </div>
+
+    <!-- Table Panel -->
+    <div class="table-panel">
+      <div class="table-toolbar">
+        <span class="toolbar-title" id="toolbar-title">Все объекты — сводка</span>
+        <span class="row-count" id="row-count"></span>
+        <input type="text" class="toolbar-search" id="table-search" placeholder="Поиск в таблице…" oninput="applyTableFilter()"/>
+        <button class="filter-btn" id="issues-btn" onclick="toggleIssuesFilter()">⚠ Только с замечаниями</button>
+      </div>
+      <div class="table-wrap" id="table-wrap"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let allData = [];        // all rows as objects
+let grouped = {};        // mag → rows[]
+let prefixMap = {};      // mag → 'MAG' | 'DS'
+let currentMag = null;   // null = summary
+let showIssuesOnly = false;
+let sortCol = null;
+let sortDesc = false;
+const COLS_SKIP_SORT = new Set();
+
+// ── Helper: object label ───────────────────────────────────────────────────
+function objLabel(mag) {
+  return `${prefixMap[mag] || 'MAG'} ${mag}`;
+}
+
+// ── Upload handlers ────────────────────────────────────────────────────────
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  const f = e.dataTransfer.files[0];
+  if (f) processFile(f);
+});
+fileInput.addEventListener('change', e => { if (e.target.files[0]) processFile(e.target.files[0]); });
+
+function processFile(file) {
+  // show loading
+  document.getElementById('upload-view').innerHTML = `
+    <div style="text-align:center;padding:80px">
+      <div class="spinner"></div>
+      <div class="loading-msg">Обрабатываем файл…</div>
+    </div>`;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      // Data starts at row 3 (header=2, 0-indexed), find header row
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      // Find header row (contains 'Mag')
+      let headerRow = 0;
+      for (let i = 0; i < Math.min(10, raw.length); i++) {
+        if (raw[i].includes('Mag') || raw[i].includes('mag')) { headerRow = i; break; }
+      }
+      const headers = raw[headerRow];
+      const rows = raw.slice(headerRow + 1).filter(r => r.some(c => c !== ''));
+
+      allData = rows.map(r => {
+        const obj = {};
+        headers.forEach((h, i) => { obj[h] = String(r[i] ?? '').trim(); });
+        // compute remarks
+        const issues = [];
+        const ip     = obj['IP Коммутатора'] || '';
+        const loc    = obj['Расположение'] || '';
+        const cab    = obj['Шкаф'] || '';
+        const lyra   = obj['SN Lyra'] || '';
+        const netbox = obj['SN Netbox'] || '';
+        const model  = obj['Модель SW'] || '';
+        if (!ip)  issues.push('Не указан IP-адрес');
+        if (!loc) issues.push('Не указано местоположение');
+        if (!cab) issues.push('Не указан шкаф');
+        if (!lyra) issues.push('Не указан SN Lyra');
+        else if (lyra.toLowerCase().includes('не найден')) issues.push('Не найден в Лира');
+        if (!netbox) issues.push('Не указан SN Netbox');
+        if (!model)  issues.push('Не указана модель SW');
+        obj['Замечания'] = issues.join('; ');
+        obj['_issues'] = issues.length;
+        return obj;
+      });
+
+      // Group
+      grouped = {};
+      allData.forEach(row => {
+        const m = row['Mag'] || 'Неопределённый объект';
+        if (!grouped[m]) grouped[m] = [];
+        grouped[m].push(row);
+      });
+
+      // Build prefix map: DS if majority of switches start with DS, else MAG
+      prefixMap = {};
+      Object.entries(grouped).forEach(([m, rows]) => {
+        const dsCount  = rows.filter(r => (r['Коммутатор']||'').startsWith('DS')).length;
+        const magCount = rows.filter(r => (r['Коммутатор']||'').startsWith('MAG')).length;
+        prefixMap[m] = dsCount > magCount ? 'DS' : 'MAG';
+      });
+
+      document.getElementById('header-file').textContent = file.name;
+      document.getElementById('upload-view').style.display = 'none';
+      document.getElementById('main-view').style.display = 'flex';
+
+      renderKPI();
+      renderSidebar();
+      showSummary();
+    } catch(err) {
+      document.getElementById('upload-view').innerHTML = `
+        <div style="text-align:center;padding:80px;color:#EF4444">
+          <div style="font-size:32px;margin-bottom:16px">⚠</div>
+          <div style="font-weight:600;margin-bottom:8px">Ошибка при чтении файла</div>
+          <div style="color:#64748B;font-size:13px">${err.message}</div>
+          <button class="upload-btn" style="margin-top:24px" onclick="location.reload()">Попробовать снова</button>
+        </div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ── KPI ───────────────────────────────────────────────────────────────────
+function renderKPI() {
+  const total  = allData.length;
+  const noIp   = allData.filter(r => !r['IP Коммутатора']).length;
+  const noLoc  = allData.filter(r => !r['Расположение']).length;
+  const noCab  = allData.filter(r => !r['Шкаф']).length;
+  const noBoth = allData.filter(r => !r['IP Коммутатора'] && !r['Расположение']).length;
+  const noLyra = allData.filter(r => !r['SN Lyra']).length;
+  const badLyra= allData.filter(r => (r['SN Lyra']||'').toLowerCase().includes('не найден')).length;
+  const noNetbox = allData.filter(r => !r['SN Netbox']).length;
+  const noModel  = allData.filter(r => !r['Модель SW']).length;
+  const objs   = Object.keys(grouped).length;
+
+  const kpis = [
+    { label: 'Объектов',           value: objs,    cls: '' },
+    { label: 'Коммутаторов',       value: total,   cls: '' },
+    { label: 'Без IP',             value: noIp,    cls: noIp    ? 'warn' : '' },
+    { label: 'Без расположения',   value: noLoc,   cls: noLoc   ? 'warn' : '' },
+    { label: 'Без шкафа',         value: noCab,   cls: noCab   ? 'warn' : '' },
+    { label: 'Без IP и расположения', value: noBoth, cls: noBoth ? 'err'  : '' },
+    { label: 'Без SN Lyra',        value: noLyra,  cls: noLyra  ? 'warn' : '' },
+    { label: 'Не найден в Лира',   value: badLyra, cls: badLyra ? 'err'  : '' },
+    { label: 'Без SN Netbox',      value: noNetbox,cls: noNetbox? 'warn' : '' },
+    { label: 'Без модели SW',      value: noModel, cls: noModel ? 'warn' : '' },
+  ];
+
+  document.getElementById('kpi-strip').innerHTML = kpis.map(k => `
+    <div class="kpi-card">
+      <div class="kpi-value ${k.cls}">${k.value}</div>
+      <div class="kpi-label">${k.label}</div>
+    </div>`).join('');
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────
+function renderSidebar(filter = '') {
+  const list = document.getElementById('sidebar-list');
+  const mags = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'ru'));
+  const lf = filter.toLowerCase();
+
+  // All summary item
+  const summaryHtml = `
+    <div class="sidebar-item ${currentMag === null ? 'active' : ''}" onclick="showSummary()">
+      <div class="status-dot dot-ok"></div>
+      <span class="obj-name">Все объекты</span>
+      <span class="obj-count">${allData.length}</span>
+    </div>`;
+
+  const items = mags
+    .filter(m => m.toLowerCase().includes(lf))
+    .map(m => {
+      const rows  = grouped[m];
+      const issues = rows.filter(r => r['_issues'] > 0).length;
+      const critical = rows.filter(r => !r['IP Коммутатора'] && !r['Расположение']).length;
+      const dotCls = critical > 0 ? 'dot-err' : issues > 0 ? 'dot-warn' : 'dot-ok';
+      return `<div class="sidebar-item ${currentMag === m ? 'active' : ''}" onclick="showMag('${esc(m)}')">
+        <div class="status-dot ${dotCls}"></div>
+        <span class="obj-name">${objLabel(m)}</span>
+        <span class="obj-count">${rows.length}</span>
+      </div>`;
+    }).join('');
+
+  list.innerHTML = summaryHtml + items;
+}
+
+function filterSidebar(val) { renderSidebar(val); }
+
+// ── Summary view ──────────────────────────────────────────────────────────
+function showSummary() {
+  currentMag = null;
+  showIssuesOnly = false;
+  document.getElementById('issues-btn').classList.remove('active');
+  document.getElementById('toolbar-title').textContent = 'Все объекты — сводка';
+  document.getElementById('table-search').value = '';
+  renderSidebar(document.getElementById('sidebar-search').value);
+
+  const mags = Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'ru'));
+  const rows = mags.map(m => {
+    const grp   = grouped[m];
+    const total = grp.length;
+    const noIp  = grp.filter(r => !r['IP Коммутатора']).length;
+    const noLoc = grp.filter(r => !r['Расположение']).length;
+    const noCab = grp.filter(r => !r['Шкаф']).length;
+    const noBoth= grp.filter(r => !r['IP Коммутатора'] && !r['Расположение']).length;
+    const noLyra  = grp.filter(r => !r['SN Lyra']).length;
+    const badLyra = grp.filter(r => (r['SN Lyra']||'').toLowerCase().includes('не найден')).length;
+    const noNetbox= grp.filter(r => !r['SN Netbox']).length;
+    const noModel = grp.filter(r => !r['Модель SW']).length;
+    const okPct = Math.round((total - grp.filter(r=>r['_issues']>0).length) / total * 100);
+    const barColor = okPct === 100 ? '#10B981' : okPct > 70 ? '#F59E0B' : '#EF4444';
+    return `<tr onclick="showMag('${esc(m)}')" style="cursor:pointer">
+      <td class="mono">${objLabel(m)}</td>
+      <td class="mono" style="font-weight:600;color:var(--navy)">${total}</td>
+      <td class="${noIp?'count-warn':'count-ok'}">${noIp||'—'}</td>
+      <td class="${noLoc?'count-warn':'count-ok'}">${noLoc||'—'}</td>
+      <td class="${noCab?'count-warn':'count-ok'}">${noCab||'—'}</td>
+      <td class="${noBoth?'count-err':'count-ok'}">${noBoth||'—'}</td>
+      <td class="${noLyra?'count-warn':'count-ok'}">${noLyra||'—'}</td>
+      <td class="${badLyra?'count-err':'count-ok'}">${badLyra||'—'}</td>
+      <td class="${noNetbox?'count-warn':'count-ok'}">${noNetbox||'—'}</td>
+      <td class="${noModel?'count-warn':'count-ok'}">${noModel||'—'}</td>
+      <td>
+        <div class="obj-completeness">
+          <div class="bar-track"><div class="bar-fill" style="width:${okPct}%;background:${barColor}"></div></div>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--slate-lt);width:32px">${okPct}%</span>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('row-count').textContent = `${mags.length} объектов`;
+  document.getElementById('table-wrap').innerHTML = `
+    <table id="summary-table">
+      <thead><tr>
+        <th>Объект</th><th>Всего</th><th>Без IP</th>
+        <th>Без расположения</th><th>Без шкафа</th><th>Без IP и расп.</th>
+        <th>Без SN Lyra</th><th>Не найден в Лира</th>
+        <th>Без SN Netbox</th><th>Без модели SW</th>
+        <th style="min-width:140px">Заполненность</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+// ── Per-object view ───────────────────────────────────────────────────────
+function showMag(mag) {
+  currentMag = mag;
+  showIssuesOnly = false;
+  document.getElementById('issues-btn').classList.remove('active');
+  document.getElementById('toolbar-title').textContent = objLabel(mag);
+  document.getElementById('table-search').value = '';
+  renderSidebar(document.getElementById('sidebar-search').value);
+  renderDataTable();
+}
+
+function renderDataTable() {
+  let rows = currentMag ? grouped[currentMag] : allData;
+  const search = document.getElementById('table-search').value.toLowerCase();
+  if (showIssuesOnly) rows = rows.filter(r => r['_issues'] > 0);
+  if (search) rows = rows.filter(r =>
+    Object.values(r).some(v => String(v).toLowerCase().includes(search)));
+
+  document.getElementById('row-count').textContent = `${rows.length} записей`;
+
+  // Columns to show
+  const cols = ['Mag','Шкаф','Коммутатор','IP Коммутатора','Расположение','SN Netbox','SN Lyra','Модель SW','Комментарий','Замечания'];
+
+  const thead = cols.map((c,i) => {
+    const sorted = sortCol === c;
+    return `<th class="${sorted?'sorted':''}${sorted&&sortDesc?' desc':''}" onclick="sortBy('${esc(c)}')">${c}</th>`;
+  }).join('');
+
+  // Sort
+  let sorted = [...rows];
+  if (sortCol) {
+    sorted.sort((a, b) => {
+      const av = a[sortCol] || '', bv = b[sortCol] || '';
+      const r = av.localeCompare(bv, 'ru', {numeric: true});
+      return sortDesc ? -r : r;
+    });
+  }
+
+  const tbody = sorted.map(r => {
+    const issues = r['_issues'];
+    const rowCls = issues > 1 ? 'row-err' : issues === 1 ? 'row-warn' : '';
+    const cells = cols.map(c => {
+      const v = r[c] || '';
+      if (c === 'Замечания') {
+        if (!v) return `<td></td>`;
+        const cls = issues > 1 ? 'badge-err' : 'badge-warn';
+        return `<td><span class="badge ${cls}">${v}</span></td>`;
+      }
+      if (c === 'IP Коммутатора') return `<td class="${v?'ip':'missing'}" title="${v}">${v||'—'}</td>`;
+      if (c === 'Коммутатор')     return `<td class="switch-name" title="${v}">${v}</td>`;
+      if (c === 'Mag' || c === 'Шкаф') return `<td class="mono" title="${v}">${v||'—'}</td>`;
+      if (c === 'SN Lyra') {
+        if (!v) return `<td class="missing" title="">—</td>`;
+        if (v.toLowerCase().includes('не найден')) return `<td class="mono" style="color:var(--err);font-weight:600" title="${v}">${v}</td>`;
+        return `<td class="mono" title="${v}">${v}</td>`;
+      }
+      if (c === 'SN Netbox') return `<td class="mono ${v?'':'missing'}" title="${v}">${v||'—'}</td>`;
+      return `<td title="${v}">${v||''}</td>`;
+    }).join('');
+    return `<tr class="${rowCls}">${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('table-wrap').innerHTML = `
+    <table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function applyTableFilter() {
+  if (currentMag !== null) renderDataTable();
+  else showSummary();
+}
+
+function toggleIssuesFilter() {
+  showIssuesOnly = !showIssuesOnly;
+  document.getElementById('issues-btn').classList.toggle('active', showIssuesOnly);
+  if (currentMag !== null) renderDataTable();
+}
+
+function sortBy(col) {
+  if (sortCol === col) { sortDesc = !sortDesc; }
+  else { sortCol = col; sortDesc = false; }
+  if (currentMag !== null) renderDataTable();
+}
+
+function esc(s) { return s.replace(/\\/g,"\\\\").replace(/'/g,"\\'"); }
+</script>
+</body>
+</html>
